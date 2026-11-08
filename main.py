@@ -16,7 +16,7 @@ if not API_KEY:
 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-001")
 LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
-DISTANCE_LIMIT = 0.6  # cosine distance, 작을수록 유사. 응답의 distance를 보며 조정
+DISTANCE_LIMIT = 0.35  # 자료 유무를 확실하게 가르기 위한 보정값  # cosine distance, 작을수록 유사. 응답의 distance를 보며 조정
 
 client = genai.Client(api_key=API_KEY)
 col = chromadb.PersistentClient(path="./chroma_db").get_or_create_collection(
