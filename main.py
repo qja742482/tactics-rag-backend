@@ -1,13 +1,13 @@
-import time
 import os
+import time
 
 import chromadb
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -15,7 +15,7 @@ if not API_KEY:
     raise ValueError("GEMINI_API_KEY(또는 GOOGLE_API_KEY)가 .env에 없습니다.")
 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-001")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
 DISTANCE_LIMIT = 0.6  # cosine distance, 작을수록 유사. 응답의 distance를 보며 조정
 
 client = genai.Client(api_key=API_KEY)
@@ -51,14 +51,21 @@ def health():
 @app.post("/ask-tactics")
 def ask_tactics(q: Question):
     if col.count() == 0:
-        raise HTTPException(status_code=503, detail="DB가 비어 있습니다. python ingest.py를 먼저 실행하세요.")
+        raise HTTPException(
+            status_code=503,
+            detail="DB가 비어 있습니다. python ingest.py를 먼저 실행하세요.",
+        )
 
     try:
-        q_emb = client.models.embed_content(
-            model=EMBED_MODEL,
-            contents=q.question,
-            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
-        ).embeddings[0].values
+        q_emb = (
+            client.models.embed_content(
+                model=EMBED_MODEL,
+                contents=q.question,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
+            )
+            .embeddings[0]
+            .values
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"임베딩 호출 실패: {e}")
 
@@ -71,7 +78,9 @@ def ask_tactics(q: Question):
     if not hits:
         return {"answer": "관련된 전술 자료를 찾지 못했습니다.", "sources": []}
 
-    context = "\n\n".join(f"[{i + 1}] ({m['source']})\n{d}" for i, (d, m, _) in enumerate(hits))
+    context = "\n\n".join(
+        f"[{i + 1}] ({m['source']})\n{d}" for i, (d, m, _) in enumerate(hits)
+    )
     prompt = f"[참고 자료]\n{context}\n\n[질문]\n{q.question}"
 
     resp = None
@@ -100,13 +109,28 @@ def ask_tactics(q: Question):
     if resp is None:
         raise HTTPException(status_code=502, detail=f"LLM 호출 실패: {last_err}")
 
-    um = resp.usage_metadata
-    print(f"토큰 사용: 입력 {um.prompt_token_count}, 출력 {um.candidates_token_count}, 합계 {um.total_token_count}")
+    answer_text = resp.text.strip()
 
-    return {
-        "answer": resp.text,
-        "sources": [
-            {"no": i + 1, "file": m["source"], "chunk": m["chunk"], "distance": round(s, 3)}
+    # 1번 작업: 거절 답변인 경우 sources를 빈 배열로 비우기
+    refusal_message = "제공된 자료에서는 확인할 수 없습니다."
+    sources = []
+    if refusal_message in answer_text:
+        sources = []
+    else:
+        sources = [
+            {
+                "no": i + 1,
+                "file": m["source"],
+                "chunk": m["chunk"],
+                "distance": round(s, 3),
+            }
             for i, (_, m, s) in enumerate(hits)
-        ],
-    }
+        ]
+
+    um = resp.usage_metadata
+    if um:
+        print(
+            f"토큰 사용: 입력 {um.prompt_token_count}, 출력 {um.candidates_token_count}, 합계 {um.total_token_count}"
+        )
+
+    return {"answer": answer_text, "sources": sources}
