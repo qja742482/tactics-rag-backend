@@ -59,7 +59,7 @@
             input.disabled = true;
             sendBtn.disabled = true;
 
-            // 딩딩딩 딩딩딩 로딩 메시지
+            //로딩 메시지
             const loadingId = appendMessage('bot', '전술 데이터베이스 검색 중...');
 
             try {
@@ -75,8 +75,12 @@
                 if (response.ok) {
                     let sourceText = '';
                     if (data.sources && data.sources.length > 0) {
-                        const files = data.sources.map(s => s.file.split('/').pop()).join(', ');
-                        sourceText = `\n\n📌 출처 문서: ${files}`;
+                        // 번호와 함께 중복 없는 파일 목록 생성
+                        const uniqueSources = data.sources.map(s => `[${s.no}] ${s.file.split('/').pop()}`);
+                        // 만약 파일명만 중복 없이 깔끔하게 보고 싶다면:
+                        // const uniqueFiles = [...new Set(data.sources.map(s => s.file.split('/').pop()))].join(', ');
+
+                        sourceText = `\n\n📌 출처 목록:\n` + uniqueSources.join('\n');
                     }
                     appendMessage('bot', data.answer + sourceText);
                 } else {
