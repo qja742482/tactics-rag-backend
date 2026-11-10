@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tactics-RAG | 레알 마드리드 전술 분석 AI</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; height: 100vh; }
+        .chat-container { width: 100%; max-width: 600px; background-color: #1e293b; display: flex; flex-direction: column; height: 100vh; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .chat-header { padding: 16px 20px; background-color: #0f172a; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
+        .chat-header h1 { font-size: 1.1rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+        .status-badge { font-size: 0.75rem; padding: 4px 8px; background-color: #10b981; color: #ffffff; border-radius: 12px; font-weight: 600; }
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+        .message { display: flex; flex-direction: column; max-width: 85%; line-height: 1.5; font-size: 0.95rem; }
+        .message.user { align-self: flex-end; }
+        .message.bot { align-self: flex-start; }
+        .bubble { padding: 12px 16px; border-radius: 16px; white-space: pre-wrap; word-break: break-word; }
+        .user .bubble { background-color: #2563eb; color: #ffffff; border-bottom-right-radius: 4px; }
+        .bot .bubble { background-color: #334155; color: #f1f5f9; border-bottom-left-radius: 4px; border: 1px solid #475569; }
+        .sources { font-size: 0.75rem; margin-top: 6px; color: #94a3b8; }
+        .chat-input-area { padding: 16px; background-color: #0f172a; border-top: 1px solid #334155; display: flex; gap: 8px; }
+        input[type="text"] { flex: 1; padding: 12px 16px; background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #ffffff; font-size: 0.95rem; outline: none; }
+        input[type="text"]:focus { border-color: #38bdf8; }
+        button { padding: 12px 20px; background-color: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        button:hover { background-color: #1d4ed8; }
+        button:disabled { background-color: #475569; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>⚽ Tactics-RAG AI</h1>
+            <span class="status-badge">Live</span>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot">
+                <div class="bubble">안녕하세요! 레알 마드리드 전술 분석 RAG 챗봇입니다. ⚽<br>선수나 감독 전술에 대해 무엇이든 물어보세요.</div>
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="userInput" placeholder="예: 벨링엄 전술 역할 알려줘" onkeypress="handleKeyPress(event)">
+            <button id="sendBtn" onclick="sendMessage()">전송</button>
+        </div>
+    </div>
+
+    <script>
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const question = input.value.trim();
+            if (!question) return;
+
+            const chatMessages = document.getElementById('chatMessages');
+            const sendBtn = document.getElementById('sendBtn');
+
+            // 사용자 메시지 추가
+            appendMessage('user', question);
+            input.value = '';
+            input.disabled = true;
+            sendBtn.disabled = true;
+
+            // 딩딩딩 딩딩딩 로딩 메시지
+            const loadingId = appendMessage('bot', '전술 데이터베이스 검색 중...');
+
+            try {
+                const response = await fetch('/ask-tactics', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: question })
+                });
+
+                const data = await response.json();
+                document.getElementById(loadingId).remove();
+
+                if (response.ok) {
+                    let sourceText = '';
+                    if (data.sources && data.sources.length > 0) {
+                        const files = data.sources.map(s => s.file.split('/').pop()).join(', ');
+                        sourceText = `\n\n📌 출처 문서: ${files}`;
+                    }
+                    appendMessage('bot', data.answer + sourceText);
+                } else {
+                    appendMessage('bot', '오류가 발생했습니다: ' + (data.detail || '답변을 가져올 수 없습니다.'));
+                }
+            } catch (err) {
+                document.getElementById(loadingId)?.remove();
+                appendMessage('bot', '서버와 통신하는 중 에러가 발생했습니다.');
+            } finally {
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        function appendMessage(sender, text) {
+            const chatMessages = document.getElementById('chatMessages');
+            const msgDiv = document.createElement('div');
+            const id = 'msg-' + Date.now();
+            msgDiv.id = id;
+            msgDiv.className = `message ${sender}`;
+
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'bubble';
+            bubbleDiv.innerText = text;
+
+            msgDiv.appendChild(bubbleDiv);
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return id;
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+    </script>
+</body>
+</html>

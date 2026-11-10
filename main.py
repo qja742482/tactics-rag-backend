@@ -4,6 +4,7 @@ import time
 import chromadb
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
@@ -43,9 +44,10 @@ class Question(BaseModel):
     top_k: int = 4
 
 
-@app.get("/")
+@app.get("/", response_class=FileResponse)
 def health():
-    return {"status": "ok", "chunks": col.count()}
+    # index.html 파일이 프로젝트 루트 경로에 있어야 합니다.
+    return FileResponse("index.html")
 
 
 @app.post("/ask-tactics")
