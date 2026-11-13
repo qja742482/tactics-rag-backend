@@ -17,24 +17,10 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-001")
 DB_PATH = "./chroma_db"
 DATA_DIR = Path("data/tactics")  # 여기에 .md / .txt 문서를 추가하면 같이 적재됨
 
+# 검색에 넣지 않을 섹션 제목 (문서 맨 아래 출처 목록 등)
+SKIP_SECTIONS = ("## 출처",)
+
 client = genai.Client(api_key=API_KEY)
-
-# 기본 내장 전술 텍스트 (실제 자료로 교체 권장, 기준 시즌/출처를 적어 두세요)
-TACTICS_TEXT = """
-[레알 마드리드 전술 분석 리포트]
-
-1. 카를로 안첼로티 감독의 4-3-1-2 (다이아몬드) 포메이션
-- 안첼로티는 주드 벨링엄을 공격형 미드필더(1번 자리)에 배치하여 공격의 핵으로 활용합니다.
-- 벨링엄은 중앙과 측면을 자유롭게 오가며 침투하고, 박스 안 타격 능력을 극대화합니다.
-
-2. 비니시우스 주니오르와 로드리고의 투톱 움직임
-- 비니시우스는 좌측 측면뿐만 아니라 중앙으로 파고드는 인사이드 포워드 움직임을 가져갑니다.
-- 로드리고는 우측 넓은 지역을 커버하며 상대 수비라인을 벌려주는 역할을 맡습니다.
-
-3. 미드필더진의 기동성과 볼 순환
-- 추아메니 또는 카마빙가는 수비형 미드필더로서 포백을 보호하고 역습을 차단합니다.
-- 발베르데는 우측 하프스페이스를 끊임없이 오르내리며 공수 연결고리 역할을 수행합니다.
-"""
 
 
 def chunk_text(text: str, size: int = 500, overlap: int = 80) -> list[str]:
@@ -52,6 +38,22 @@ def chunk_text(text: str, size: int = 500, overlap: int = 80) -> list[str]:
     return chunks
 
 
+def prepare(text: str) -> tuple[str, str]:
+    """문서에서 제목(첫 '# ' 줄)과 본문을 분리하고, 출처 같은 제외 섹션은 잘라낸다."""
+    kept = []
+    for line in text.splitlines():
+        if line.strip().startswith(SKIP_SECTIONS):
+            break  # 이 줄부터 문서 끝까지는 검색에 넣지 않음
+        kept.append(line)
+    body_lines = kept
+
+    title = ""
+    if body_lines and body_lines[0].startswith("# "):
+        title = body_lines[0][2:].strip()
+        body_lines = body_lines[1:]
+    return title, "\n".join(body_lines).strip()
+
+
 def embed(texts: list[str]) -> list[list[float]]:
     vectors = []
     for i in range(0, len(texts), 50):
@@ -65,12 +67,15 @@ def embed(texts: list[str]) -> list[list[float]]:
 
 
 def collect_sources() -> dict[str, str]:
-    sources = {"builtin_tactics.txt": TACTICS_TEXT}
-    if DATA_DIR.exists():
-        for f in sorted(DATA_DIR.rglob("*")):
-            if f.is_file() and f.suffix in (".md", ".txt"):
-                key = f.relative_to(DATA_DIR).as_posix()  # 예: real_madrid/음바페_역할.md
-                sources[key] = f.read_text(encoding="utf-8")
+    if not DATA_DIR.exists():
+        raise FileNotFoundError(f"{DATA_DIR} 폴더가 없습니다. 문서를 넣은 뒤 다시 실행하세요.")
+    sources = {}
+    for f in sorted(DATA_DIR.rglob("*")):
+        if f.is_file() and f.suffix in (".md", ".txt"):
+            key = f.relative_to(DATA_DIR).as_posix()  # 예: real_madrid/player/음바페_역할.md
+            sources[key] = f.read_text(encoding="utf-8")
+    if not sources:
+        raise ValueError(f"{DATA_DIR} 안에 .md / .txt 문서가 없습니다.")
     return sources
 
 
@@ -82,10 +87,24 @@ def main():
     )
 
     for name, text in collect_sources().items():
-        chunks = chunk_text(text)
+        title, body = prepare(text)
+        chunks = chunk_text(body)
+        if not chunks:
+            print(f"⚠️ {name}: 내용이 비어 있어 건너뜁니다")
+            continue
+
+        # 모든 청크 앞에 문서 제목을 붙여서 "누구/무엇에 대한 내용인지"를 검색이 알 수 있게 함
+        if title:
+            chunks = [f"[{title}]\n{c}" for c in chunks]
+
         ids = [hashlib.md5(f"{name}-{i}-{c}".encode()).hexdigest() for i, c in enumerate(chunks)]
-        team = name.split("/")[0] if "/" in name else "common"
-        metas = [{"source": name, "team": team, "chunk": i} for i in range(len(chunks))]
+        parts = name.split("/")
+        team = parts[0] if len(parts) > 1 else "common"
+        kind = parts[1] if len(parts) > 2 else "common"  # player / team
+        metas = [
+            {"source": name, "team": team, "kind": kind, "title": title, "chunk": i}
+            for i in range(len(chunks))
+        ]
         col.upsert(ids=ids, documents=chunks, embeddings=embed(chunks), metadatas=metas)
         print(f"✅ {name}: {len(chunks)}개 청크 저장")
 
