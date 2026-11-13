@@ -28,7 +28,6 @@
 └───────────────┘               └───────────────┘
 
 🛠️ 2. Tech Stack
-
 Backend: Python 3.12+, FastAPI, Pydantic, Uvicorn
 
 Vector DB: ChromaDB (로컬 퍼시스턴트 저장소, HNSW Cosine Space)
@@ -62,8 +61,9 @@ Google Gemini API 호출 시 발생할 수 있는 503(서버 혼잡) 및 429(Rat
 GitHub 저장소와 Render 파이프라인을 연동하고 Build Command에 python ingest.py를 포함시켜, 코드 푸시 시 자동으로 최신 문서 기반 벡터 DB 구축 및 라이브 배포가 수행되는 환경을 구축했습니다.
 
 💡 4. 프로젝트 핵심 포인트 (Portfolio Strengths)
-직관적인 라이브 데모 시연성: 복잡한 프론트엔드 빌드 과정 없이 FastAPI의 FileResponse를 활용하여 완성도 높은 챗봇 UI를 통합 서빙합니다.
+직관적인 라이브 데모 시연성: 복잡한 프론트end 빌드 과정 없이 FastAPI의 FileResponse를 활용하여 완성도 높은 챗봇 UI를 통합 서빙합니다.
 
 검증 가능한 파일 단위 출처 매핑: 청크(조각) 단위로 출처가 중복되던 문제를 파일 단위 중복 제거(Deduplication) 구조로 개선하여, LLM이 인용하는 번호와 UI 하단에 표기되는 .md 파일 목록을 완벽하게 일치시켰습니다.
 
 실용적인 백엔드 안정성 설계: 질문 길이(300자) 및 검색 개수(top_k 1~10) 제한, 외부 LLM API 부하에 대응하는 재시도 로직, 거리 임계값 기반 환각 차단을 통해 실제 서비스 수준의 안정성을 확보했습니다.
+EOF
